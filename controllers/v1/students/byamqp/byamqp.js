@@ -2,7 +2,8 @@ const amqp = require('amqplib/callback_api');
 const AMQP_URL = 'amqp://localhost';
 
 let ch = null;
-let res_list = [];
+let create_student_res = [];
+let find_student_res = [];
 amqp.connect(AMQP_URL, (error, connection) => {
     if (error) {
         throw error;
@@ -13,29 +14,42 @@ amqp.connect(AMQP_URL, (error, connection) => {
             throw error;
         }
         ch = channel;
-        ch.consume('find-student-by-id_res', (msg) => {
+        
+        ch.consume('create-student_res', (msg) => {
             console.log(JSON.parse(msg.content));
             result = JSON.parse(msg.content);
-            res_list.push(result);
-            console.log(res_list);
-            return;
+            create_student_res.push(result);
+            // console.log(create_student_res);
+        }, {
+            noAck: true
+        });
+
+        ch.consume('find-student-by-id_res', (msg) => {
+            result = JSON.parse(msg.content);
+            find_student_res.push(result);
+            // console.log(find_student_res);
         }, {
             noAck: true
         });
     });
 });
 
-exports.getStudentById = async (req, res) => {
-    const obj = JSON.stringify({ payload: req.params.studentId });
-    console.log(obj);
-    ch.sendToQueue('find-student-by-id', Buffer.from(obj), { persistent: true });
-    while (res_list.length > 0) {        
-        return res.status(200).send(res_list.shift());
-    }
+exports.createNewStudent = (req, res) => {
+    const obj = JSON.stringify({ payload: req.body.name });
+    ch.sendToQueue('create-student', Buffer.from(obj), { persistent: true });
+    setTimeout(() => {
+        while (create_student_res.length > 0) {
+            return res.status(200).send(create_student_res.shift());
+        }
+    }, 250);
 };
 
-exports.createStudent = async (req, res) => {
-    const obj = JSON
-    ch.sendToQueue('create-student', Buffer.from(obj), { persistent: true });
-    return res.status(204).send();
+exports.getStudentById = (req, res) => {
+    const obj = JSON.stringify({ payload: req.params.studentId });
+    ch.sendToQueue('find-student-by-id', Buffer.from(obj), { persistent: true });
+    setTimeout(() => {
+        while (find_student_res.length > 0) {        
+            return res.status(200).send(find_student_res.shift());
+        }
+    }, 250);
 };
