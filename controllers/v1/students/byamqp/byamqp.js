@@ -1,55 +1,124 @@
 const amqp = require('amqplib/callback_api');
-const AMQP_URL = 'amqp://localhost';
+// Match with the rabbitmq container configuration
+const AMQP_URL = 'amqp://rabbitmq';
 
-let ch = null;
-let create_student_res = [];
-let find_student_res = [];
-amqp.connect(AMQP_URL, (error, connection) => {
-    if (error) {
-        throw error;
-    }
-
-    connection.createChannel((error, channel) => {
-        if (error) {
-            throw error;
-        }
-        ch = channel;
-        
-        ch.consume('create-student_res', (msg) => {
-            console.log(JSON.parse(msg.content));
-            result = JSON.parse(msg.content);
-            create_student_res.push(result);
-            // console.log(create_student_res);
-        }, {
-            noAck: true
-        });
-
-        ch.consume('find-student-by-id_res', (msg) => {
-            result = JSON.parse(msg.content);
-            find_student_res.push(result);
-            // console.log(find_student_res);
-        }, {
-            noAck: true
-        });
-    });
-});
+const CREATE_STUDENT_QUEUE = 'create-student';
+const CREATE_STUDENT_RES_QUEUE = 'create-student_res';
+const FIND_STUDENT_BY_ID_QUEUE = 'find-student-by-id';
+const FIND_STUDENT_BY_ID_RES_QUEUE = 'find-student-by-id_res';
 
 exports.createNewStudent = (req, res) => {
     const obj = JSON.stringify({ payload: req.body.name });
-    ch.sendToQueue('create-student', Buffer.from(obj), { persistent: true });
-    setTimeout(() => {
-        while (create_student_res.length > 0) {
-            return res.status(200).send(create_student_res.shift());
+    amqp.connect(AMQP_URL, (error, connection) => {
+        if (error) {
+            throw error;
         }
-    }, 250);
+
+        connection.createChannel((error, channel) => {
+            if (error) {
+                res.status(400).send(error);
+                throw error;
+            }
+
+            channel.assertQueue(CREATE_STUDENT_RES_QUEUE, {
+                durable: true
+            }, (error, res_queue) => {
+                if (error) {
+                    res.status(400).send(error);
+                    throw error;
+                }
+
+                let correlationId = generateUUID();
+                channel.consume(res_queue.queue, (msg) => {
+                    if (msg.properties.correlationId === correlationId) {
+                        const reply = JSON.parse(msg.content);
+                        res.status(201).send(reply);
+                        channel.ack(msg);
+
+                        setTimeout(() => {
+                            connection.close();
+                        }, 500);
+                        return;
+                    } else {
+                        channel.nack(msg);
+                    }
+                });
+
+                channel.assertQueue(CREATE_STUDENT_QUEUE, {
+                    durable: true
+                }, (error, req_queue) => {
+                    if (error) {
+                        res.status(400).send(error);
+                        throw error;
+                    }
+    
+                    channel.sendToQueue(req_queue.queue, Buffer.from(obj), {
+                        correlationId: correlationId,
+                        replyTo: res_queue.queue
+                    });
+                });
+            });
+        });
+    });
 };
 
 exports.getStudentById = (req, res) => {
     const obj = JSON.stringify({ payload: req.params.studentId });
-    ch.sendToQueue('find-student-by-id', Buffer.from(obj), { persistent: true });
-    setTimeout(() => {
-        while (find_student_res.length > 0) {        
-            return res.status(200).send(find_student_res.shift());
+    amqp.connect(AMQP_URL, (error, connection) => {
+        if (error) {
+            throw error;
         }
-    }, 250);
+
+        connection.createChannel((error, channel) => {
+            if (error) {
+                res.status(400).send(error);
+                throw error;
+            }
+
+            channel.assertQueue(FIND_STUDENT_BY_ID_RES_QUEUE, {
+                durable: true
+            }, (error, res_queue) => {
+                if (error) {
+                    res.status(400).send(error);
+                    throw error;
+                }
+
+                let correlationId = generateUUID();
+                channel.consume(res_queue.queue, (msg) => {
+                    if (msg.properties.correlationId === correlationId) {
+                        const reply = JSON.parse(msg.content);
+                        res.status(200).send(reply);
+                        channel.ack(msg);
+
+                        setTimeout(() => {
+                            connection.close();
+                        }, 500);
+                        return;
+                    } else {
+                        channel.nack(msg);
+                    }
+                });
+
+                channel.assertQueue(FIND_STUDENT_BY_ID_QUEUE, {
+                    durable: true
+                }, (error, req_queue) => {
+                    if (error) {
+                        res.status(400).send(error);
+                        throw error;
+                    }
+    
+                    channel.sendToQueue(req_queue.queue, Buffer.from(obj), {
+                        correlationId: correlationId,
+                        replyTo: res_queue.queue
+                    });
+                });
+            });
+        });
+    });
+};
+
+const generateUUID = () => {
+    return Math.random().toString() +
+           Math.random().toString() +
+           Math.random().toString();
 };
