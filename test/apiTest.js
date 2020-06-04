@@ -2,13 +2,15 @@ const request = require('supertest');
 const app = require('./../index');
 const {performance} = require('perf_hooks');
 
+const BASE_URL = 'http://localhost:5002/api/v1/students';
+
 describe('HTTP: POST /api/v1/students/byhttp', () => {
     it('should respond with json containing mariadb insert query information', (done) => {
         const startTime = performance.now();
         let i = 0;
         for (; i<100; i++) {
             request(app)
-                .post('http://localhost:5002/api/v1/students/byhttp')
+                .post(`${BASE_URL}/byhttp`)
                 .send({ name: 'http-' + (i+1).toString() })
                 .set('Accept', 'application/json')
                 .expect((res) => {
@@ -29,7 +31,7 @@ describe('HTTP: POST /api/v1/students/:studentId/byhttp', () => {
         let i = 0;
         for (; i<100; i++) {
             request(app)
-                .post(`http://localhost:5002/api/v1/students/${i+1}/byhttp`)
+                .post(`${BASE_URL}/${i+1}/byhttp`)
                 .set('Accept', 'application/json')
                 .expect((res) => {
                     res.body.registration_number = i+1;
@@ -48,7 +50,7 @@ describe('AMQP: POST /api/v1/students/byamqp', () => {
         let i = 0;
         for (; i<100; i++) {
             request(app)
-                .post('http://localhost:5002/api/v1/students/byamqp')
+                .post(`${BASE_URL}/byamqp`)
                 .send({ name: 'amqp-' + (i+1) })
                 .set('Accept', 'application/json')
                 .expect((res) => {
@@ -69,7 +71,7 @@ describe('AMQP: POST /api/v1/students/:studentId/byamqp', () => {
         let i = 100;
         for (; i<200; i++) {
             request(app)
-                .post(`http://localhost:5002/api/v1/students/${i+1}/byamqp`)
+                .post(`${BASE_URL}/${i+1}/byamqp`)
                 .set('Accept', 'application/json')
                 .expect((res) => {
                     res.body.registration_number = i+1;
